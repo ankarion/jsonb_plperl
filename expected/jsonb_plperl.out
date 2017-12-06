@@ -66,7 +66,8 @@ AS $$
 return ('1' =~ m(0\t2));
 $$;
 SELECT testRegexpToJsonb();
-ERROR:  The type you was trying to transform can't be represented in JSONB
+ERROR:  could not transform to type "jsonb"
+DETAIL:  The type you are trying to transform can't be represented in JSON
 CONTEXT:  PL/Perl function "testregexptojsonb"
 -- test jsonb -> scalar -> jsonb
 CREATE FUNCTION testSVToJsonb2(val jsonb) RETURNS jsonb
@@ -88,7 +89,8 @@ SELECT testSVToJsonb2('1');
 (1 row)
 
 SELECT testSVToJsonb2('1E+131071');
-ERROR:  Infinity can't be represented in JSONB
+ERROR:  could not transform to type "jsonb"
+DETAIL:  The type you are trying to transform can't be represented in JSON
 CONTEXT:  PL/Perl function "testsvtojsonb2"
 SELECT testSVToJsonb2('-1');
  testsvtojsonb2 

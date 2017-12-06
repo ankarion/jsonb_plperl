@@ -50,22 +50,14 @@ SV_FromJsonbValue(JsonbValue *jsonbValue)
 		case jbvNumeric:
 
 			/*
-			 * XXX There should be a better way. Right now Numeric is
-			 * transformed into string and then this string is parsed into
-			 * perl numeric
+			 * Transform incoming value into string and generate SV from
+			 * string
 			 */
-			str = DatumGetCString(DirectFunctionCall1(
-													  numeric_out,
-													  NumericGetDatum(jsonbValue->val.numeric)
-													  )
-				);
+			str = DatumGetCString(DirectFunctionCall1(numeric_out, NumericGetDatum(jsonbValue->val.numeric)));
 			result = newSVnv(SvNV(cstr2sv(pnstrdup(str, strlen(str)))));
 			break;
 		case jbvString:
-			result = cstr2sv(pnstrdup(
-									  jsonbValue->val.string.val,
-									  jsonbValue->val.string.len
-									  ));
+			result = cstr2sv(pnstrdup(jsonbValue->val.string.val, jsonbValue->val.string.len));
 			break;
 		case jbvBool:
 			result = newSVnv(SvNV(jsonbValue->val.boolean ? &PL_sv_yes : &PL_sv_no));
@@ -83,7 +75,7 @@ SV_FromJsonbValue(JsonbValue *jsonbValue)
 			pg_unreachable();
 			break;
 	}
-	return (result);
+	return result;
 }
 
 /*
@@ -97,66 +89,66 @@ SV_FromJsonb(JsonbContainer *jsonb)
 	dTHX;
 	SV		   *result;
 	SV		   *value;
-	HV		   *object;
-	AV		   *av;
 	JsonbIterator *it;
 	JsonbValue	v;
-	const char *key;
-	int			keyLength;
-	bool		raw_scalar;
 
 	it = JsonbIteratorInit(jsonb);
 
 	switch (JsonbIteratorNext(&it, &v, true))
 	{
-		case (WJB_BEGIN_ARRAY):
-			/* array in v */
-			av = newAV();
-			raw_scalar = (v.val.array.rawScalar);
-			value = newSV(0);
-			while (
-				   (JsonbIteratorNext(&it, &v, true) == WJB_ELEM)
-				)
+		case WJB_BEGIN_ARRAY:
 			{
-				value = SV_FromJsonbValue(&v);
-				av_push(av, value);
+				AV		   *av;
+				bool		raw_scalar;
+
+				/* array in v */
+				av = newAV();
+				raw_scalar = (v.val.array.rawScalar);
+				value = newSV(0);
+				while (JsonbIteratorNext(&it, &v, true) == WJB_ELEM)
+				{
+					value = SV_FromJsonbValue(&v);
+					av_push(av, value);
+				}
+				if (raw_scalar)
+					result = (newRV(value));
+				else
+					result = ((SV *) av);
+				break;
 			}
-			if (raw_scalar)
-				result = (newRV(value));
-			else
-				result = ((SV *) av);
-			break;
-		case (WJB_BEGIN_OBJECT):
-			/* hash in v*/
-			object = newHV();
-			while (JsonbIteratorNext(&it, &v, true) == WJB_KEY)
+		case WJB_BEGIN_OBJECT:
 			{
-				/* json key in v */
-				key = pnstrdup(
-							   v.val.string.val,
-							   v.val.string.len
-					);
-				keyLength = v.val.string.len;
-				JsonbIteratorNext(&it, &v, true);
-				value = SV_FromJsonbValue(&v);
-				(void) hv_store(object, key, keyLength, value, 0);
+				HV		   *object;
+				const char *key;
+				int			keyLength;
+
+				/* hash in v */
+				object = newHV();
+				while (JsonbIteratorNext(&it, &v, true) == WJB_KEY)
+				{
+					/* json key in v */
+					key = pnstrdup(v.val.string.val, v.val.string.len);
+					keyLength = v.val.string.len;
+					JsonbIteratorNext(&it, &v, true);
+					value = SV_FromJsonbValue(&v);
+					(void) hv_store(object, key, keyLength, value, 0);
+				}
+				result = (SV *) object;
+				break;
 			}
-			result = (SV *) object;
-			break;
-		case (WJB_ELEM):
-		case (WJB_VALUE):
-		case (WJB_KEY):
+		case WJB_ELEM:
+		case WJB_VALUE:
+		case WJB_KEY:
 			/* simple objects */
 			result = (SV_FromJsonbValue(&v));
 			break;
-		case (WJB_DONE):
-		case (WJB_END_OBJECT):
-		case (WJB_END_ARRAY):
-		default:
+		case WJB_DONE:
+		case WJB_END_OBJECT:
+		case WJB_END_ARRAY:
 			pg_unreachable();
 			break;
 	}
-	return (result);
+	return result;
 }
 
 /* jsonb_to_plperl(Jsonb *in)
@@ -202,11 +194,16 @@ AV_ToJsonbValue(AV *in, JsonbParseState *jsonb_state)
 
 		value = av_fetch(in, i, false);
 		jbvElem = SV_ToJsonbValue(*value, jsonb_state);
+
+		/*
+		 * If "value" was a complex structure, it was already pushed to jsonb
+		 * and there is no need to push it again
+		 */
 		if (IsAJsonbScalar(jbvElem))
 			pushJsonbValue(&jsonb_state, WJB_ELEM, jbvElem);
 	}
 	out = pushJsonbValue(&jsonb_state, WJB_END_ARRAY, NULL);
-	return (out);
+	return out;
 }
 
 /*
@@ -219,10 +216,8 @@ static JsonbValue *
 SV_ToJsonbValue(SV *in, JsonbParseState *jsonb_state)
 {
 	dTHX;
-	svtype		type;
-	JsonbValue *out;
-	char	   *str;
-	Datum		tmp;
+	svtype		type;			/* type of incoming object */
+	JsonbValue *out;			/* result */
 
 	type = SvTYPE(in);
 	switch (type)
@@ -235,36 +230,37 @@ SV_ToJsonbValue(SV *in, JsonbParseState *jsonb_state)
 			break;
 		case SVt_NV:
 		case SVt_IV:
-			if (SvROK(in))
-				/* if in is a pointer */
-				out = SV_ToJsonbValue((SV *) SvRV(in), jsonb_state);
-			else
 			{
-				/* if in is a numeric */
-				out = palloc(sizeof(JsonbValue));
-				str = sv2cstr(in);
-				if (strcmp(str, "Inf") != 0)
-				{
-					/* in case when input is "inf"  */
-					tmp = DirectFunctionCall3(
-											  numeric_in,
-											  CStringGetDatum(str), 0, -1
-						);
-					out->val.numeric = DatumGetNumeric(tmp);
-					out->type = jbvNumeric;
-				}
+				if (SvROK(in))
+					/* if "in" is a pointer */
+					out = SV_ToJsonbValue((SV *) SvRV(in), jsonb_state);
 				else
 				{
-					errmsg("could not transform to type \"%s\"", "jsonb");
-					errdetail("The type you are trying to transform can't be represented in JSON");
+					/* if "in" is a numeric */
+					char	   *str;
+
+					out = palloc(sizeof(JsonbValue));
+					str = sv2cstr(in);
+					if (strcmp(str, "Inf") == 0)
+						/* in case when "in" is "inf"  */
+						ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), (errmsg("could not transform to type \"%s\"", "jsonb"), errdetail("The type you are trying to transform can't be represented in JSON"))));
+					else
+					{
+						Datum		tmp;
+
+						tmp = DirectFunctionCall3(numeric_in, CStringGetDatum(str), 0, -1);
+						out->val.numeric = DatumGetNumeric(tmp);
+						out->type = jbvNumeric;
+					}
 				}
+				break;
 			}
-			break;
 		case SVt_NULL:
 			out = palloc(sizeof(JsonbValue));
 			out->type = jbvNull;
 			break;
 		case SVt_PV:
+
 			/*
 			 * String
 			 */
@@ -274,19 +270,10 @@ SV_ToJsonbValue(SV *in, JsonbParseState *jsonb_state)
 			out->type = jbvString;
 			break;
 		default:
-			ereport(ERROR,
-				(errcode(
-						 ERRCODE_INVALID_PARAMETER_VALUE
-						 ),(
-							 errmsg(
-								 "could not transform to type \"%s\"", "jsonb"
-								 ),
-							 errdetail(
-								 "The type you are trying to transform can't be represented in JSON"
-								 ))));
+			ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), (errmsg("could not transform to type \"%s\"", "jsonb"), errdetail("The type you are trying to transform can't be represented in JSON"))));
 			break;
 	}
-	return (out);
+	return out;
 }
 
 /*
@@ -303,7 +290,7 @@ HV_ToJsonbValue(HV *obj, JsonbParseState *jsonb_state)
 	HE		   *he;
 
 	pushJsonbValue(&jsonb_state, WJB_BEGIN_OBJECT, NULL);
-	while ((he = hv_iternext(obj)))
+	while ((he = hv_iternext(obj)) != NULL)
 	{
 		JsonbValue *key;
 		JsonbValue *val;
@@ -315,7 +302,7 @@ HV_ToJsonbValue(HV *obj, JsonbParseState *jsonb_state)
 			pushJsonbValue(&jsonb_state, WJB_VALUE, val);
 	}
 	out = pushJsonbValue(&jsonb_state, WJB_END_OBJECT, NULL);
-	return (out);
+	return out;
 }
 
 /*
