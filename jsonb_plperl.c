@@ -11,6 +11,7 @@
  */
 #include "postgres.h"
 
+/* #undef _ is needed because "_" was already defined in include/c.h:971:0 */
 #undef _
 
 #include "fmgr.h"
@@ -31,9 +32,9 @@ static JsonbValue *HV_ToJsonbValue(HV *obj, JsonbParseState *jsonb_state);
 static JsonbValue *SV_ToJsonbValue(SV *obj, JsonbParseState *jsonb_state);
 
 /*
- * Function for transforming JsonbValue type into SV
- * The first argument defines the JsonbValue to be transformed into SV
- * Return value is the pointer to transformed object
+ * SV_FromJsonbValue
+ *
+ * Transform JsonbValue into SV
  */
 static SV  *
 SV_FromJsonbValue(JsonbValue *jsonbValue)
@@ -48,7 +49,6 @@ SV_FromJsonbValue(JsonbValue *jsonbValue)
 			result = (SV *) newRV((SV *) SV_FromJsonb(jsonbValue->val.binary.data));
 			break;
 		case jbvNumeric:
-
 			/*
 			 * Transform incoming value into string and generate SV from
 			 * string
@@ -71,17 +71,14 @@ SV_FromJsonbValue(JsonbValue *jsonbValue)
 		case jbvNull:
 			result = newSV(0);
 			break;
-		default:
-			pg_unreachable();
-			break;
 	}
 	return result;
 }
 
 /*
- * Function for transforming JsonbContainer type into SV
- * The first argument defines the JsonbContainer to be transformed into SV
- * Return value is the pointer to transformed object
+ * SV_FromJsonb
+ *
+ * Transform JsonbContainer into SV
  */
 static SV  *
 SV_FromJsonb(JsonbContainer *jsonb)
@@ -151,10 +148,10 @@ SV_FromJsonb(JsonbContainer *jsonb)
 	return result;
 }
 
-/* jsonb_to_plperl(Jsonb *in)
- * Function for transforming Jsonb type into SV
- * The first argument defines the Jsonb to be transformed into SV
- * Return value is the pointer to transformed object
+/*
+ * jsonb_to_plperl
+ *
+ * Transform Jsonb into SV
  */
 PG_FUNCTION_INFO_V1(jsonb_to_plperl);
 Datum
@@ -170,10 +167,10 @@ jsonb_to_plperl(PG_FUNCTION_ARGS)
 }
 
 /*
- * Function for transforming AV type into JsonbValue
- * The first argument defines the AV to be transformed into JsonbValue
- * The second argument defines conversion state
- * Return value is the pointer to transformed object
+ * AV_ToJsonbValue
+ *
+ * Transform AV into JsonbValue
+ * jsonb_state defines conversion state
  */
 static JsonbValue *
 AV_ToJsonbValue(AV *in, JsonbParseState *jsonb_state)
@@ -182,8 +179,8 @@ AV_ToJsonbValue(AV *in, JsonbParseState *jsonb_state)
 
 	JsonbValue *jbvElem;
 	JsonbValue *out = NULL;
-	int32		pcount;
-	int32		i;
+	ssize_t		pcount;
+	ssize_t		i;
 
 	pcount = av_len(in) + 1;
 	pushJsonbValue(&jsonb_state, WJB_BEGIN_ARRAY, NULL);
@@ -207,10 +204,9 @@ AV_ToJsonbValue(AV *in, JsonbParseState *jsonb_state)
 }
 
 /*
- * Function for transforming Jsonb type into SV
- * The first argument defines the Jsonb to be transformed into SV
- * The second argument defines conversion state
- * Return value is the pointer to transformed object
+ * SV_ToJsonbValue
+ *
+ * Transform Jsonb into SV
  */
 static JsonbValue *
 SV_ToJsonbValue(SV *in, JsonbParseState *jsonb_state)
@@ -277,10 +273,9 @@ SV_ToJsonbValue(SV *in, JsonbParseState *jsonb_state)
 }
 
 /*
- * Function for transforming Jsonb type into SV
- * The first argument defines the Jsonb to be transformed into SV
- * The second argument defines conversion staterl
- * Return value is the pointer to transformed object
+ * HV_ToJsonbValue
+ *
+ * Transform Jsonb into SV
  */
 static JsonbValue *
 HV_ToJsonbValue(HV *obj, JsonbParseState *jsonb_state)
@@ -307,9 +302,8 @@ HV_ToJsonbValue(HV *obj, JsonbParseState *jsonb_state)
 
 /*
  * plperl_to_jsonb(SV *in)
- * Function for transforming Jsonb type into SV
- * The first argument defines the Jsonb to be transformed into SV
- * Return value is the pointer to transformed object
+ *
+ * Transform Jsonb into SV
  */
 PG_FUNCTION_INFO_V1(plperl_to_jsonb);
 Datum
