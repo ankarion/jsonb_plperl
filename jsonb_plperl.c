@@ -49,6 +49,7 @@ SV_FromJsonbValue(JsonbValue *jsonbValue)
 			result = (SV *) newRV((SV *) SV_FromJsonb(jsonbValue->val.binary.data));
 			break;
 		case jbvNumeric:
+
 			/*
 			 * Transform incoming value into string and generate SV from
 			 * string
