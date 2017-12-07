@@ -240,7 +240,10 @@ SV_ToJsonbValue(SV *in, JsonbParseState *jsonb_state)
 					str = sv2cstr(in);
 					if (strcmp(str, "Inf") == 0)
 						/* in case when "in" is "inf"  */
-						ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), (errmsg("could not transform to type \"%s\"", "jsonb"), errdetail("The type you are trying to transform can't be represented in JSON"))));
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 (errmsg("could not transform to type \"%s\"", "jsonb"),
+								  errdetail("The type you are trying to transform can't be transformed to jsonb"))));
 					else
 					{
 						Datum		tmp;
@@ -267,7 +270,10 @@ SV_ToJsonbValue(SV *in, JsonbParseState *jsonb_state)
 			out->type = jbvString;
 			break;
 		default:
-			ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), (errmsg("could not transform to type \"%s\"", "jsonb"), errdetail("The type you are trying to transform can't be represented in JSON"))));
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 (errmsg("could not transform to type \"%s\"", "jsonb"),
+					  errdetail("The type you are trying to transform can't be transformed to jsonb"))));
 			break;
 	}
 	return out;
