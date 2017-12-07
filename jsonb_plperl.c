@@ -1,12 +1,7 @@
 /* This document contains an implementation of transformations from perl
  * object to jsonb and vise versa.
  * In this file you can find implementation of transformations:
- * - SV_FromJsonbValue(JsonbValue *jsonbValue)
- * - SV_FromJsonb(JsonbContainer *jsonb)
  * - jsonb_to_plperl(PG_FUNCTION_ARGS)
- * - SV_ToJsonbValue(SV *in, JsonbParseState *jsonb_state)
- * - HV_ToJsonbValue(HV *obj, JsonbParseState *jsonb_state)
- * - AV_ToJsonbValue(AV *in, JsonbParseState *jsonb_state)
  * - plperl_to_jsonb(PG_FUNCTION_ARGS)
  */
 #include "postgres.h"
@@ -23,8 +18,6 @@
 
 PG_MODULE_MAGIC;
 
-/* Links to functions
- * */
 static SV  *SV_FromJsonb(JsonbContainer *jsonb);
 
 static JsonbValue *HV_ToJsonbValue(HV *obj, JsonbParseState *jsonb_state);
@@ -55,7 +48,7 @@ SV_FromJsonbValue(JsonbValue *jsonbValue)
 			 * string
 			 */
 			str = DatumGetCString(DirectFunctionCall1(numeric_out, NumericGetDatum(jsonbValue->val.numeric)));
-			result = newSVnv(SvNV(cstr2sv(pnstrdup(str, strlen(str)))));
+			result = newSVnv(SvNV(cstr2sv(pstrdup(str))));
 			break;
 		case jbvString:
 			result = cstr2sv(pnstrdup(jsonbValue->val.string.val, jsonbValue->val.string.len));
@@ -109,9 +102,9 @@ SV_FromJsonb(JsonbContainer *jsonb)
 					av_push(av, value);
 				}
 				if (raw_scalar)
-					result = (newRV(value));
+					result = newRV(value);
 				else
-					result = ((SV *) av);
+					result = (SV *) av;
 				break;
 			}
 		case WJB_BEGIN_OBJECT:
@@ -125,7 +118,7 @@ SV_FromJsonb(JsonbContainer *jsonb)
 				while (JsonbIteratorNext(&it, &v, true) == WJB_KEY)
 				{
 					/* json key in v */
-					key = pnstrdup(v.val.string.val, v.val.string.len);
+					key = pstrdup(v.val.string.val);
 					keyLength = v.val.string.len;
 					JsonbIteratorNext(&it, &v, true);
 					value = SV_FromJsonbValue(&v);
@@ -138,7 +131,7 @@ SV_FromJsonb(JsonbContainer *jsonb)
 		case WJB_VALUE:
 		case WJB_KEY:
 			/* simple objects */
-			result = (SV_FromJsonbValue(&v));
+			result = SV_FromJsonbValue(&v);
 			break;
 		case WJB_DONE:
 		case WJB_END_OBJECT:
